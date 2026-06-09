@@ -20,14 +20,19 @@ The vasculature is rendered as glowing, WSS-colored tubes inside a ghosted human
 
 | | |
 |---|---|
-| **🩸 Scenario explorer** | Switch between a healthy baseline and four pathologies — atherosclerosis, arterial stenosis, tumor vasculature, and a combined worst case. Affected vessels re-color, hotspots ignite, and a grounded explanation updates. |
+| **🩸 Scenario explorer** | Switch between a healthy baseline, atherosclerosis, arterial stenosis, and a combined worst case. Affected vessels re-color, hotspots ignite, and a grounded explanation updates. |
+| **🧫 Multi-site tumors** | Toggle tumors on at **seven anatomical sites** (brain, lungs, liver, kidney, pancreas, breast) — combinable, so you can place several at once. Each marks its vasculature as low/oscillatory disturbed flow. |
 | **💊 Nanoparticle journey** | Follow a ~100 nm carrier from injection toward its target while a **carrier-integrity gauge** reacts to the real shear forces at each waypoint — margination in low shear, rising membrane permeability, and **burst rupture at the >1000 dyne/cm² stenosis**. |
-| **✨ Flow particles** | Particles stream along every vessel at speeds and colors set by the local WSS, so the whole system feels alive. Toggle and density controls included. |
+| **✨ High-resolution flow simulation** | Tens of thousands of GPU particles stream along every vessel with a **parabolic velocity profile** (fast core, slow walls) and **shear-driven margination** (carriers drift to the wall in low shear). Adaptive count holds framerate. |
+| **🔬 Simulation lab** | Zoom into any region — a stenosis, a bifurcation, or an active tumor — for a high-resolution local view with a **live cross-section velocity profile** showing the margination skew. |
 | **📊 Quantitative panels** | A log-scale WSS spectrum, live per-vessel readouts, and **"The Shear Gap"** — the chart that shows why benchtop release assays (~0.1–0.3 dyne/cm²) sit a thousand-fold below physiological flow. |
+
+> The particle physics (parabolic profile + shear-driven margination) is physically-motivated and **illustrative — idealized flow, not a validated CFD simulation** (labeled in-app).
 
 A colorblind-safe palette, keyboard navigation, reduced-motion support, and a touch/mobile layout are built in.
 
 ![Scenario: arterial stenosis](media/scenario-stenosis.png)
+![Multi-site tumors](media/tumors.png)
 ![Nanoparticle journey — rupture at the stenosis](media/journey.png)
 
 ---
