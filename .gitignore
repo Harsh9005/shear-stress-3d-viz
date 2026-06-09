@@ -1,0 +1,8 @@
+
+# Local planning + private manuscript-derived notes (do not publish)
+tasks/
+.session_log*.md
+
+# Python
+__pycache__/
+*.pyc
