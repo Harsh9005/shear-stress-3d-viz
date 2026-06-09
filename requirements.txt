@@ -1,4 +1,7 @@
+# Python dependencies for the static figure generator (figures/generate_static_figures.py).
+# matplotlib renders the figures; numpy handles array/geometry math;
+# scipy provides smooth CubicSpline vessel paths (the script falls back to
+# numpy interpolation if scipy is unavailable).
 matplotlib>=3.5
-plotly>=5.0
 numpy>=1.20
 scipy>=1.7

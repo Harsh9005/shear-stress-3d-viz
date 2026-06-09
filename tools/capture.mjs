@@ -52,6 +52,7 @@ try {
   await page.waitForFunction('window.__sceneReady === true', { timeout: 20000 });
   // Skip the cinematic intro for a deterministic framed view.
   await page.evaluate('window.__hl && window.__hl.frame && window.__hl.frame()');
+  if (arg('clean', false)) await page.evaluate(() => { document.getElementById('ui').style.display = 'none'; });
 
   if (action) {
     if (action.startsWith('scenario:')) {
@@ -61,8 +62,13 @@ try {
         const btns = document.querySelectorAll('.scenario-btn');
         for (const b of btns) if (b.textContent.toLowerCase().includes(sid.slice(0, 5))) b.click();
       }, id);
-    } else if (action === 'journey') {
+    } else if (action.startsWith('journey')) {
+      const steps = parseInt(action.split(':')[1] || '0', 10);
       await page.evaluate('window.__hl.journey.start()');
+      for (let s = 0; s < steps; s++) {
+        await sleep(1700);
+        await page.evaluate(() => { const b = [...document.querySelectorAll('.jbtn')].find(x => x.dataset.act === 'next'); if (b) b.click(); });
+      }
     } else if (action === 'colorblind') {
       await page.evaluate(() => { const cb = [...document.querySelectorAll('.ctl-toggle')].find(x => x.parentElement.textContent.includes('Colour-blind')); if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); } });
     }
@@ -72,11 +78,17 @@ try {
   if (frames > 0) {
     const base = out.replace(/\.png$/, '');
     for (let i = 0; i < frames; i++) {
-      if (orbit) await page.evaluate((n) => { const c = window.__hl.controls; const a = (n) * (Math.PI * 2 / 1) / 240; const cam = window.__hl.camera; const t = c.target; const r = Math.hypot(cam.position.x - t.x, cam.position.y - t.y); cam.position.x = t.x + Math.cos(a) * r; cam.position.y = t.y + Math.sin(a) * r; c.update(); window.__hl.tick(0.033); }, i);
+      if (orbit) await page.evaluate(({ n, total }) => {
+        const hl = window.__hl, cam = hl.camera, t = hl.controls.target;
+        if (n === 0) { const dx = cam.position.x - t.x, dy = cam.position.y - t.y; window.__orb = { r: Math.hypot(dx, dy), a0: Math.atan2(dy, dx), z: cam.position.z }; }
+        const o = window.__orb, a = o.a0 + (n / total) * Math.PI * 2;
+        cam.position.x = t.x + Math.cos(a) * o.r; cam.position.y = t.y + Math.sin(a) * o.r; cam.position.z = o.z;
+        hl.controls.update(); hl.tick(0.033);
+      }, { n: i, total: frames });
       else await page.evaluate('for(let k=0;k<2;k++) window.__hl.tick(0.033)');
       await page.screenshot({ path: `${base}_${String(i).padStart(3, '0')}.png` });
     }
-    console.log(JSON.stringify({ ok: true, frames, base, centre, errors }));
+    console.log(JSON.stringify({ ok: true, frames, base, errors }));
   } else {
     await page.screenshot({ path: out });
     // Assert (after the screenshot, so the GPU stall can't blank the captured frame).
