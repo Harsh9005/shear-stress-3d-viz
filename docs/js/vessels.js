@@ -45,13 +45,12 @@ const HOTSPOT_COLORS = {
   tumor: new THREE.Color(0.85, 0.3, 0.9),
 };
 
-export function buildBed(ctx, spec, wss) {
+export function buildBed(ctx, spec, wss, seed = 1337) {
   const { THREE: T, colorscale } = ctx;
   const n = 200;
   const pos = new Float32Array(n * 3);
   const col = new Float32Array(n * 3);
   const base = colorscale.colorAt(wss);
-  let seed = 1337;
   const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
   const [cx, cy, cz] = spec.center; const [sx, sy, sz] = spec.spread;
   for (let i = 0; i < n; i++) {

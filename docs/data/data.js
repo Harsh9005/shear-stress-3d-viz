@@ -1706,46 +1706,9 @@ export const DATA = {
       "dim": true
     },
     {
-      "id": "tumor",
-      "label": "Tumor vasculature",
-      "blurb": "Tumor microvasculature is disorganised, with low and oscillatory shear and elevated interstitial fluid pressure — impairing convective transport and nanoparticle penetration. Shown as a low-shear regime rather than a single measured value.",
-      "changes": [],
-      "hotspots": [
-        {
-          "pos": [
-            9,
-            2,
-            38
-          ],
-          "label": "Tumor",
-          "kind": "tumor"
-        }
-      ],
-      "beds": [
-        {
-          "center": [
-            9,
-            2,
-            37
-          ],
-          "spread": [
-            2.2,
-            1.8,
-            2.4
-          ],
-          "label": "Tumor vasculature",
-          "provenance": "regime_only",
-          "regime": "low_oscillatory",
-          "representativeWss": 1.0,
-          "schematic": true
-        }
-      ],
-      "dim": true
-    },
-    {
       "id": "combined",
       "label": "Combined pathology",
-      "blurb": "Co-existing atherosclerosis, stenosis and tumor vasculature in one patient — the full hemodynamic range a carrier must survive in a single journey.",
+      "blurb": "Co-existing atherosclerosis and stenosis in one patient — and you can layer tumors at any site on top, for the full hemodynamic range a carrier must survive.",
       "changes": [
         {
           "vessels": [
@@ -1832,37 +1795,170 @@ export const DATA = {
           ],
           "label": "Stenosis",
           "kind": "stenosis"
-        },
-        {
-          "pos": [
-            9,
-            2,
-            38
-          ],
-          "label": "Tumor",
-          "kind": "tumor"
         }
       ],
-      "beds": [
-        {
-          "center": [
-            9,
-            2,
-            37
-          ],
-          "spread": [
-            2.2,
-            1.8,
-            2.4
-          ],
-          "label": "Tumor vasculature",
-          "provenance": "regime_only",
-          "regime": "low_oscillatory",
-          "representativeWss": 1.0,
-          "schematic": true
-        }
-      ],
+      "beds": [],
       "dim": true
+    }
+  ],
+  "tumorSites": [
+    {
+      "id": "brain",
+      "label": "Brain",
+      "pos": [
+        0.0,
+        0.0,
+        66.0
+      ],
+      "spread": [
+        3.0,
+        3.0,
+        3.5
+      ],
+      "note": "Glioblastoma neovasculature is chaotic and leaky; the blood-brain barrier limits carrier access.",
+      "nearVessels": [
+        "r_common_carotid",
+        "l_common_carotid",
+        "r_jugular_vein",
+        "l_jugular_vein"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "right_lung",
+      "label": "Right lung",
+      "pos": [
+        9.0,
+        -2.0,
+        37.0
+      ],
+      "spread": [
+        2.6,
+        2.0,
+        2.8
+      ],
+      "note": "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
+      "nearVessels": [
+        "r_pulmonary_artery",
+        "r_pulmonary_vein"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "left_lung",
+      "label": "Left lung",
+      "pos": [
+        -9.0,
+        -2.0,
+        38.0
+      ],
+      "spread": [
+        2.6,
+        2.0,
+        2.8
+      ],
+      "note": "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
+      "nearVessels": [
+        "l_pulmonary_artery",
+        "l_pulmonary_vein"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "liver",
+      "label": "Liver",
+      "pos": [
+        9.0,
+        -1.0,
+        20.0
+      ],
+      "spread": [
+        3.0,
+        2.5,
+        2.8
+      ],
+      "note": "Hepatic tumors disrupt the low-shear sinusoidal architecture; the liver is also a major clearance organ.",
+      "nearVessels": [
+        "hepatic_artery",
+        "hepatic_vein",
+        "portal_vein",
+        "hepatic_arteriole"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "kidney",
+      "label": "Kidney",
+      "pos": [
+        10.0,
+        -2.0,
+        15.0
+      ],
+      "spread": [
+        2.0,
+        1.8,
+        2.0
+      ],
+      "note": "Renal tumor vasculature is disorganised within a high-flow filtration organ.",
+      "nearVessels": [
+        "r_renal_artery",
+        "l_renal_artery",
+        "renal_arteriole"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "pancreas",
+      "label": "Pancreas",
+      "pos": [
+        0.0,
+        -4.0,
+        8.0
+      ],
+      "spread": [
+        2.5,
+        1.8,
+        2.2
+      ],
+      "note": "Dense desmoplastic stroma raises interstitial pressure and impairs convective transport.",
+      "nearVessels": [
+        "splenic_artery",
+        "mesenteric_arteriole"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
+    },
+    {
+      "id": "breast",
+      "label": "Breast",
+      "pos": [
+        6.0,
+        -7.0,
+        28.0
+      ],
+      "spread": [
+        2.2,
+        1.6,
+        2.2
+      ],
+      "note": "Disorganised tumor microvasculature with low, oscillatory shear and elevated interstitial pressure.",
+      "nearVessels": [
+        "r_subclavian_artery"
+      ],
+      "regime": "low_oscillatory",
+      "representativeWss": 1.0,
+      "schematic": true
     }
   ],
   "journey": {

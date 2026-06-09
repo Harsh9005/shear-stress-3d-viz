@@ -43,6 +43,7 @@ const browser = await puppeteer.launch({
 
 try {
   const page = await browser.newPage();
+  await page.setCacheEnabled(false); // always load fresh modules (avoid stale ESM cache)
   await page.setViewport({ width, height, deviceScaleFactor: 1 });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -57,11 +58,29 @@ try {
   if (action) {
     if (action.startsWith('scenario:')) {
       const id = action.split(':')[1];
-      await page.evaluate((sid) => {
+      const ok = await page.evaluate((sid) => {
+        const valid = window.__hl.scenarios.list.some((s) => s.id === sid);
+        if (!valid) return false;
         window.__hl.scenarios.apply(sid);
         const btns = document.querySelectorAll('.scenario-btn');
         for (const b of btns) if (b.textContent.toLowerCase().includes(sid.slice(0, 5))) b.click();
+        return true;
       }, id);
+      if (!ok) { console.log(JSON.stringify({ ok: false, error: 'scenario id not found: ' + id })); process.exit(1); }
+    } else if (action.startsWith('tumor:')) {
+      const ids = action.split(':')[1].split(',');
+      for (const tid of ids) {
+        const clicked = await page.evaluate((sid) => {
+          const valid = window.__hl.tumors.sites.some((s) => s.id === sid);
+          if (!valid) return false;
+          window.__hl.tumors.toggle(sid);
+          return true;
+        }, tid);
+        if (!clicked) { console.log(JSON.stringify({ ok: false, error: 'tumor id not found: ' + tid })); process.exit(1); }
+      }
+    } else if (action.startsWith('simlab:')) {
+      const tid = action.split(':')[1];
+      await page.evaluate((t) => window.__hl.simlab.enter(t), tid);
     } else if (action.startsWith('journey')) {
       const steps = parseInt(action.split(':')[1] || '0', 10);
       await page.evaluate('window.__hl.journey.start()');

@@ -223,10 +223,6 @@ STENOSIS_HOTSPOTS = [
     {"pos": [-4, -4, -15], "label": "Stenosis", "kind": "stenosis"},
     {"pos": [0, -6, 18], "label": "Stenosis", "kind": "stenosis"},
 ]
-TUMOR_BED = {"center": [9, 2, 37], "spread": [2.2, 1.8, 2.4], "label": "Tumor vasculature"}
-TUMOR_HOTSPOT = {"pos": [9, 2, 38], "label": "Tumor", "kind": "tumor"}
-
-
 def build_scenarios():
     athero_change = {
         "vessels": ATHERO_VESSELS, "provenance": "literature", "regime": "low_oscillatory",
@@ -235,12 +231,6 @@ def build_scenarios():
     stenosis_change = {
         "vessels": STENOSIS_VESSELS, "provenance": "literature", "regime": "extreme",
         "displayWss": None, "sentinel": 1000.0, "openEnded": True,
-    }
-    # Tumor bed renders a representative LOW-shear regime for colour only; no measured value shown.
-    tumor_bed = {
-        "center": TUMOR_BED["center"], "spread": TUMOR_BED["spread"], "label": TUMOR_BED["label"],
-        "provenance": "regime_only", "regime": "low_oscillatory",
-        "representativeWss": 1.0, "schematic": True,
     }
     return [
         {"id": "healthy", "label": "Healthy baseline",
@@ -258,17 +248,54 @@ def build_scenarios():
                   "strip a carrier's hydration shell and rupture soft lipid bilayers, causing premature "
                   "burst release before the target is reached.",
          "changes": [stenosis_change], "hotspots": STENOSIS_HOTSPOTS, "beds": [], "dim": True},
-        {"id": "tumor", "label": "Tumor vasculature",
-         "blurb": "Tumor microvasculature is disorganised, with low and oscillatory shear and elevated "
-                  "interstitial fluid pressure — impairing convective transport and nanoparticle "
-                  "penetration. Shown as a low-shear regime rather than a single measured value.",
-         "changes": [], "hotspots": [TUMOR_HOTSPOT], "beds": [tumor_bed], "dim": True},
         {"id": "combined", "label": "Combined pathology",
-         "blurb": "Co-existing atherosclerosis, stenosis and tumor vasculature in one patient — the full "
-                  "hemodynamic range a carrier must survive in a single journey.",
-         "changes": [athero_change, stenosis_change], "hotspots":
-             ATHERO_HOTSPOTS + STENOSIS_HOTSPOTS + [TUMOR_HOTSPOT], "beds": [tumor_bed], "dim": True},
+         "blurb": "Co-existing atherosclerosis and stenosis in one patient — and you can layer tumors at "
+                  "any site on top, for the full hemodynamic range a carrier must survive.",
+         "changes": [athero_change, stenosis_change],
+         "hotspots": ATHERO_HOTSPOTS + STENOSIS_HOTSPOTS, "beds": [], "dim": True},
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tumor sites — a combinable layer (toggled independently of the disease scenarios).
+# Each site is the honest low/oscillatory regime; representativeWss is for colour only
+# (schematic), notes are qualitative with NO digits-as-WSS, and nearVessels recolour locally.
+# ---------------------------------------------------------------------------
+_TUMOR_SITES = [
+    ("Brain", [0, 0, 66], [3.0, 3.0, 3.5],
+     "Glioblastoma neovasculature is chaotic and leaky; the blood-brain barrier limits carrier access.",
+     ["r_common_carotid", "l_common_carotid", "r_jugular_vein", "l_jugular_vein"]),
+    ("Right lung", [9, -2, 37], [2.6, 2.0, 2.8],
+     "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
+     ["r_pulmonary_artery", "r_pulmonary_vein"]),
+    ("Left lung", [-9, -2, 38], [2.6, 2.0, 2.8],
+     "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
+     ["l_pulmonary_artery", "l_pulmonary_vein"]),
+    ("Liver", [9, -1, 20], [3.0, 2.5, 2.8],
+     "Hepatic tumors disrupt the low-shear sinusoidal architecture; the liver is also a major clearance organ.",
+     ["hepatic_artery", "hepatic_vein", "portal_vein", "hepatic_arteriole"]),
+    ("Kidney", [10, -2, 15], [2.0, 1.8, 2.0],
+     "Renal tumor vasculature is disorganised within a high-flow filtration organ.",
+     ["r_renal_artery", "l_renal_artery", "renal_arteriole"]),
+    ("Pancreas", [0, -4, 8], [2.5, 1.8, 2.2],
+     "Dense desmoplastic stroma raises interstitial pressure and impairs convective transport.",
+     ["splenic_artery", "mesenteric_arteriole"]),
+    ("Breast", [6, -7, 28], [2.2, 1.6, 2.2],
+     "Disorganised tumor microvasculature with low, oscillatory shear and elevated interstitial pressure.",
+     ["r_subclavian_artery"]),
+]
+
+
+def build_tumor_sites():
+    out = []
+    for name, pos, spread, note, near in _TUMOR_SITES:
+        out.append({
+            "id": slug(name), "label": name, "pos": list(map(float, pos)),
+            "spread": list(map(float, spread)), "note": note,
+            "nearVessels": list(near), "regime": "low_oscillatory",
+            "representativeWss": 1.0, "schematic": True,
+        })
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +396,7 @@ def build_data():
         "organs": build_organs(),
         "landmarks": LANDMARKS,
         "scenarios": build_scenarios(),
+        "tumorSites": build_tumor_sites(),
         "journey": build_journey(),
         "panels": build_panels(),
     }
@@ -388,7 +416,8 @@ def main():
     n_v = len(data["vessels"])
     print(f"Wrote {json_path} and {js_path}")
     print(f"  vessels={n_v}  beds={len(data['beds'])}  organs={len(data['organs'])}  "
-          f"scenarios={len(data['scenarios'])}  journey_waypoints={len(data['journey']['waypoints'])}")
+          f"scenarios={len(data['scenarios'])}  tumorSites={len(data['tumorSites'])}  "
+          f"journey_waypoints={len(data['journey']['waypoints'])}")
 
 
 if __name__ == "__main__":

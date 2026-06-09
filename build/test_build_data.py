@@ -19,14 +19,50 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Regex used to forbid restated WSS numbers inside vessel/bed NOTES (not narrative copy).
 WSS_DIGIT_RE = re.compile(r"\d+\s*[–\-]\s*\d+|\d+\s*dyne|~\d+")
+# Stricter: notes/tooltips must be purely QUALITATIVE — no digits at all, no %/percent/fold/x-magnitude.
+# (Narrative blurbs/journey copy are exempt and checked against the allowlist instead.)
+STRICT_NOTE_RE = re.compile(r"\d|%|\bpercent\b|\bfold\b|\d\s*x\b", re.I)
 # Numeric tokens that appear in scenario/journey/panel WSS fields, gathered for allowlist checks.
 
 
 # --- Schema completeness ----------------------------------------------------
 def test_top_level_keys():
     for k in ("meta", "colorscale", "groupColors", "vessels", "beds", "organs",
-              "landmarks", "scenarios", "journey", "panels"):
+              "landmarks", "scenarios", "tumorSites", "journey", "panels"):
         assert k in DATA, f"missing top-level key {k}"
+
+
+def test_tumor_sites_schema_and_honesty():
+    ids = _vessel_ids()
+    seen = set()
+    assert len(DATA["tumorSites"]) >= 5
+    for t in DATA["tumorSites"]:
+        for k in ("id", "label", "pos", "spread", "note", "nearVessels", "regime",
+                  "representativeWss", "schematic"):
+            assert k in t, f"tumor site missing {k}: {t.get('label')}"
+        assert t["id"] not in seen, f"duplicate tumor site id {t['id']}"
+        seen.add(t["id"])
+        assert len(t["pos"]) == 3 and len(t["spread"]) == 3
+        assert t["regime"] == "low_oscillatory"
+        assert t["schematic"] is True
+        assert is_allowed(t["representativeWss"]), f"{t['label']} representativeWss not allowlisted"
+        # honest: purely qualitative note (no digits/%/fold/x-magnitude)
+        assert not STRICT_NOTE_RE.search(t["note"]), f"tumor note not qualitative: {t['label']} -> {t['note']}"
+        for vid in t["nearVessels"]:
+            assert vid in ids, f"tumor {t['id']} references unknown vessel {vid}"
+
+
+def test_no_standalone_tumor_scenario():
+    # tumors are now a combinable layer, not a single-select scenario
+    assert "tumor" not in {s["id"] for s in DATA["scenarios"]}
+
+
+def test_no_tumor_bed_in_scenarios():
+    # tumors.js owns all tumor beds; scenarios must carry none
+    for s in DATA["scenarios"]:
+        for b in s.get("beds", []):
+            assert "representativeWss" not in b and "tumor" not in b.get("label", "").lower(), \
+                f"scenario {s['id']} carries a tumor bed"
 
 
 def test_meta_unit():
@@ -92,12 +128,13 @@ def test_journey_vessel_refs_exist():
 
 # --- Honesty: no WSS digits in vessel/bed notes -----------------------------
 def test_notes_have_no_wss_digits():
+    # notes are purely qualitative — strict (no digits/%/fold/x-magnitude)
     for v in DATA["vessels"]:
-        assert not WSS_DIGIT_RE.search(v["note"]), f"vessel note restates WSS: {v['name']} -> {v['note']}"
+        assert not STRICT_NOTE_RE.search(v["note"]), f"vessel note not qualitative: {v['name']} -> {v['note']}"
     for b in DATA["beds"]:
-        assert not WSS_DIGIT_RE.search(b["note"]), f"bed note restates WSS: {b['name']}"
+        assert not STRICT_NOTE_RE.search(b["note"]), f"bed note not qualitative: {b['name']}"
     for o in DATA["organs"]:
-        assert not WSS_DIGIT_RE.search(o["note"]), f"organ note restates WSS: {o['name']}"
+        assert not STRICT_NOTE_RE.search(o["note"]), f"organ note not qualitative: {o['name']}"
 
 
 # --- Honesty: every scenario/journey/panel WSS value is allowlisted ---------
@@ -189,3 +226,12 @@ def test_builds_without_tasks_dir():
     # build_data.py must depend only on build/ inputs, never on the gitignored tasks/ reference.
     src = open(os.path.join(HERE, "build_data.py"), encoding="utf-8").read()
     assert "tasks/" not in src and "manuscript" not in src.lower()
+
+
+def test_cfd_disclaimer_present():
+    # The illustrative-flow honesty caveat must be rendered on the main view AND in the sim lab.
+    docs = os.path.normpath(os.path.join(HERE, "..", "docs"))
+    index_html = open(os.path.join(docs, "index.html"), encoding="utf-8").read()
+    simlab_js = open(os.path.join(docs, "js", "simlab.js"), encoding="utf-8").read()
+    assert "not a validated CFD" in index_html, "main-view CFD disclaimer missing from index.html"
+    assert "not a validated CFD" in simlab_js, "sim-lab CFD disclaimer missing from simlab.js"

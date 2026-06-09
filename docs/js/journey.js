@@ -177,6 +177,7 @@ export function createJourney(ctx, data, vessels, flow) {
 
   function start() {
     if (active) return;
+    if (ctx.takeCamera && !ctx.takeCamera('journey')) return; // sim-lab holds the camera
     active = true; playing = false; dwell = 0;
     savedCam = ctx.camera.position.clone(); savedTarget = ctx.controls.target.clone();
     ctx.controls.enabled = false;
@@ -189,6 +190,7 @@ export function createJourney(ctx, data, vessels, flow) {
   function stop() {
     active = false; playing = false; np.visible = false; frag.visible = false; fragging = false;
     ctx.controls.enabled = true;
+    if (ctx.releaseCamera) ctx.releaseCamera('journey');
     document.body.classList.remove('journey-active');
     stage.hidden = true;
     if (savedCam) { ctx.camera.position.copy(savedCam); ctx.controls.target.copy(savedTarget); }

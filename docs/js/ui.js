@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 export function buildUI(ctx, data, mods) {
-  const { vessels, flow, panels, scenarios, journey } = mods;
+  const { vessels, flow, panels, scenarios, journey, tumors, simlab } = mods;
   const left = document.getElementById('panel-left');
   const right = document.getElementById('panel-right');
 
@@ -51,12 +51,54 @@ export function buildUI(ctx, data, mods) {
     ctx.colorscale.setColorblind(on); ctx.state.colorblind = on;
     vessels && vessels.recomputeColors();
     panels && panels.refreshPalette();
-    flow && flow.setDensity(flow.getDensity());
-    scenarios && scenarios.apply(ctx.state.activeScenarioId);
+    flow && flow.refreshColorLUT();
+    scenarios && scenarios.reapply();
   });
   lySec.append(flowRow.el, densRow, cbRow.el);
 
   left.append(scSec, lySec);
+
+  // ── Tumor sites (combinable) ──
+  if (tumors) {
+    const tSec = document.createElement('section');
+    tSec.className = 'section';
+    tSec.innerHTML = '<h2>Tumor sites <span class="h2-hint">combinable</span></h2>';
+    const chips = document.createElement('div'); chips.className = 'chips';
+    for (const site of tumors.sites) {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.textContent = site.label;
+      b.setAttribute('aria-pressed', 'false');
+      b.title = site.note;
+      b.addEventListener('click', () => {
+        const on = tumors.toggle(site.id);
+        b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        if (panels) { if (on) panels.showScenario({ label: site.label + ' tumor', blurb: site.note }); else panels.showSystem(); }
+      });
+      chips.append(b);
+    }
+    tSec.append(chips);
+    left.append(tSec);
+  }
+
+  // ── Simulation lab launcher ──
+  if (simlab) {
+    const slSec = document.createElement('section');
+    slSec.className = 'section';
+    slSec.innerHTML = '<h2>Simulation lab</h2><p class="sl-blurb">Zoom into a region and watch the high-resolution flow, with a live cross-section velocity profile.</p>';
+    const sel = document.createElement('div'); sel.className = 'chips';
+    const rebuildTargets = () => {
+      sel.innerHTML = '';
+      for (const t of simlab.targets()) {
+        const b = document.createElement('button'); b.className = 'chip sl-target'; b.textContent = t.label;
+        b.addEventListener('click', () => { if (journey && journey.isActive()) return; simlab.enter(t.id); });
+        sel.append(b);
+      }
+    };
+    rebuildTargets();
+    slSec.addEventListener('pointerenter', rebuildTargets); // refresh to include active tumors
+    slSec.append(sel);
+    left.append(slSec);
+  }
 
   // ── Journey button ──
   const jbtn = document.getElementById('journey-btn');

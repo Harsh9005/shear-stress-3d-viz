@@ -14,6 +14,8 @@ import { buildPanels } from './panels.js';
 import { buildUI } from './ui.js';
 import { createScenarioController } from './scenarios.js';
 import { createJourney } from './journey.js';
+import { createTumors } from './tumors.js';
+import { createSimLab } from './simlab.js';
 
 const BG = 0x0b0e16;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -108,21 +110,28 @@ function init() {
 
   // Shared app context handed to every module.
   const updaters = [];
+  let cameraOwner = null;
   const ctx = {
     THREE, scene, camera, renderer, controls, composer, bloom, colorscale, data: DATA,
     container, state, reducedMotion, coarsePointer, lowMemory,
     registerUpdate: (fn) => updaters.push(fn),
     setBloom: (on) => { bloom.enabled = on; },
+    // cinematic-mode lock: only one of {journey, simlab} may drive the camera at a time
+    takeCamera: (name) => { if (cameraOwner && cameraOwner !== name) return false; cameraOwner = name; return true; },
+    releaseCamera: (name) => { if (cameraOwner === name) cameraOwner = null; },
+    cameraOwner: () => cameraOwner,
   };
 
   // ── Build subsystems (each guarded so one failure can't blank the app) ──
-  let vessels, flow, panels, scenarios, journey;
+  let vessels, flow, panels, scenarios, journey, tumors, simlab;
   try { vessels = buildVasculature(ctx, DATA); } catch (e) { console.error('vessels', e); }
   try { flow = buildFlow(ctx, DATA); } catch (e) { console.error('flow', e); }
   try { panels = buildPanels(DATA, colorscale); } catch (e) { console.error('panels', e); }
   try { scenarios = createScenarioController(ctx, DATA, vessels); } catch (e) { console.error('scenarios', e); }
+  try { tumors = createTumors(ctx, DATA, vessels, flow, scenarios); if (scenarios) scenarios.setTumors(tumors); } catch (e) { console.error('tumors', e); }
   try { journey = createJourney(ctx, DATA, vessels, flow); } catch (e) { console.error('journey', e); }
-  try { buildUI(ctx, DATA, { vessels, flow, panels, scenarios, journey }); } catch (e) { console.error('ui', e); }
+  try { simlab = createSimLab(ctx, DATA, vessels, flow, tumors); } catch (e) { console.error('simlab', e); }
+  try { buildUI(ctx, DATA, { vessels, flow, panels, scenarios, journey, tumors, simlab }); } catch (e) { console.error('ui', e); }
 
   // ── Resize ──
   function onResize() {
@@ -133,15 +142,15 @@ function init() {
   }
   window.addEventListener('resize', onResize);
 
-  // ── FPS-adaptive quality guard: drop bloom → particles → pixelRatio ──
+  // ── FPS-adaptive quality guard: drop bloom → pixelRatio. (flow.js owns particle COUNT via its
+  //    own fps governor — single count authority, so the guard never touches particle count.) ──
   let fpsAccum = 0, fpsFrames = 0, lowStreak = 0, guardStage = 0;
   function guard(fps) {
     if (fps >= 28 || fps === 0) { lowStreak = 0; return; }
     if (++lowStreak < 90) return; // ~1.5 s sustained
     lowStreak = 0;
     if (guardStage === 0) { bloom.enabled = false; guardStage = 1; }
-    else if (guardStage === 1 && flow) { flow.setDensity('low'); guardStage = 2; }
-    else if (guardStage === 2) { renderer.setPixelRatio(1); composer.setPixelRatio(1); guardStage = 3; }
+    else if (guardStage === 1) { renderer.setPixelRatio(1); composer.setPixelRatio(1); flow && flow.setPixelRatio(1); guardStage = 2; }
   }
 
   // ── Establishing shot ──
@@ -183,7 +192,7 @@ function init() {
     tick(dt = 0.016) { for (const fn of updaters) fn(dt, clock.elapsedTime); controls.update(); renderFrame(); },
     setSize(w, h) { renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); },
     frame() { endIntro(); },
-    scene, camera, renderer, controls, composer, bloom, scenarios, journey, flow, vessels, panels,
+    scene, camera, renderer, controls, composer, bloom, scenarios, journey, flow, vessels, panels, tumors, simlab,
     framedPos,
   };
 
