@@ -6,3 +6,11 @@ tasks/
 # Python
 __pycache__/
 *.pyc
+
+# Local dev preview config
+.claude/
+
+# Capture tooling artifacts
+tools/node_modules/
+tools/shots/
+tools/package-lock.json

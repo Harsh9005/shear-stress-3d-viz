@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>The Hemodynamic Landscape — Wall Shear Stress in the Circulatory System</title>
+<meta name="description" content="An interactive 3D map of wall shear stress across the human circulatory system, and what it means for nanocarrier survival." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%E2%9D%A4%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="css/style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <!-- WebGL canvas mounts here -->
+  <div id="scene"></div>
+
+  <!-- Instant CSS-only loading state (shown before heavy modules parse) -->
+  <div id="loading" role="status" aria-live="polite">
+    <div class="heartbeat" aria-hidden="true">❤</div>
+    <p>Initializing hemodynamic scene…</p>
+  </div>
+
+  <!-- Failure fallback (WebGL off / CDN outage / fatal error) -->
+  <div id="fatal" hidden>
+    <div class="fatal-card">
+      <h1>The Hemodynamic Landscape</h1>
+      <p id="fatal-msg">This interactive 3D view needs WebGL and a network connection to load.</p>
+      <div id="fatal-panels"></div>
+    </div>
+  </div>
+
+  <!-- UI overlay (populated by modules) -->
+  <div id="ui" hidden>
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">❤</span>
+        <div class="brand-text">
+          <h1>The Hemodynamic Landscape</h1>
+          <p class="tagline">Wall shear stress across the circulation — and the forces a nanocarrier must survive.</p>
+        </div>
+      </div>
+      <button id="help-btn" class="icon-btn" aria-label="About this visualization" title="About">i</button>
+    </header>
+
+    <aside id="panel-left" aria-label="Scenarios and layers"></aside>
+    <aside id="panel-right" aria-label="Quantitative panels"></aside>
+
+    <footer id="bottombar">
+      <button id="journey-btn" class="primary-btn">▶ Launch nanoparticle journey</button>
+      <p class="controls-hint" aria-hidden="true">drag to rotate · scroll to zoom · hover a vessel for its shear</p>
+    </footer>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div id="journey-stage" hidden></div>
+    <div id="about-modal" class="modal" hidden></div>
+  </div>
+
+  <!-- Cinematic skip affordance -->
+  <button id="skip-intro" hidden>Skip intro ›</button>
+
+  <script>
+    // Surface a clear message if the ES module / import map fails to load at all.
+    window.addEventListener('error', function (e) {
+      if (e && e.target && (e.target.tagName === 'SCRIPT')) {
+        var f = document.getElementById('fatal');
+        var l = document.getElementById('loading');
+        if (l) l.hidden = true;
+        if (f) { f.hidden = false; }
+      }
+    }, true);
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
