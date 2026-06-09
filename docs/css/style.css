@@ -196,6 +196,8 @@ body.intro-running aside, body.intro-running #bottombar { opacity: 0; transition
   #panel-right { display: none; } /* readout shown via left on small screens to save room */
   .section, .panel { min-width: 220px; }
   #bottombar { bottom: 46vh; }
+  #bottombar .controls-hint { display: none; }
+  .primary-btn { white-space: nowrap; }
   #journey-stage { bottom: 12px; width: 94vw; }
 }
 @media (max-width: 820px) and (orientation: landscape) {
