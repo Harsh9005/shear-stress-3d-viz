@@ -14,8 +14,9 @@ function meanWss(v) { return (v.wss[0] + v.wss[1]) / 2; }
 const VERT = /* glsl */`
 in float aVessel; in float aSeed; in float aAngle; in float aRadialSeed;
 uniform sampler2D uCenterline; uniform sampler2D uMeta;
-uniform float uTime, uSpeedScale, uSizeScale, uPixelRatio, uMaxPointSize;
-out float vStop; out float vAlpha;
+uniform float uTime, uSpeedScale, uSizeScale, uPixelRatio, uMaxPointSize, uStreak;
+out float vStop; out float vAlpha; out float vFast;
+out vec2 vDir;                                 // screen-space flow direction, for the streak
 
 vec3 sampleCenter(int v, float s) {            // s in [0, MAX-1]; manual lerp (NEAREST float tex)
   int i0 = int(floor(s));
@@ -56,23 +57,53 @@ void main() {
   }
 
   vAlpha = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.95, 1.0, t));  // hide wrap teleport
+  vFast = prof;                                  // core lanes are brighter as well as faster
+
   vec4 mv = modelViewMatrix * vec4(pos + offset, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(uSizeScale * uPixelRatio / -mv.z, 1.0, uMaxPointSize);
+
+  // Screen-space flow direction, so the fragment shader can draw a streak that lies ALONG the
+  // vessel instead of a round dot. A round sprite reads as a static glow; a streak reads as
+  // something moving, which is the whole point of drawing particles at all.
+  vec4 clipAhead = projectionMatrix * (modelViewMatrix * vec4(pos + offset + T, 1.0));
+  vec2 here = gl_Position.xy / max(gl_Position.w, 1e-4);
+  vec2 ahead = clipAhead.xy / max(clipAhead.w, 1e-4);
+  vec2 d = ahead - here;
+  vDir = length(d) > 1e-6 ? normalize(d) : vec2(1.0, 0.0);
+
+  // Elongating the sprite needs a bigger point to draw into, or the streak is clipped square.
+  // The stretch goes INSIDE the clamp: multiplying afterwards let a near-camera particle reach
+  // several hundred pixels and paint a white gash across the view.
+  gl_PointSize = clamp(uSizeScale * uPixelRatio * uStreak / -mv.z, 1.0, uMaxPointSize);
 }`;
 
 const FRAG = /* glsl */`
 precision highp float;
-in float vStop; in float vAlpha;
-uniform sampler2D uColorLUT; uniform float uParticleAlpha;
+in float vStop; in float vAlpha; in float vFast; in vec2 vDir;
+uniform sampler2D uColorLUT; uniform float uParticleAlpha, uStreak;
 out vec4 fragColor;
 void main() {
+  // Reshape the square point sprite into a capsule aligned with the flow: local.x runs down the
+  // vessel and is stretched by uStreak, local.y is the vessel's width and stays tight.
+  // (No backticks in here -- this whole shader is a JS template literal.)
   vec2 c = gl_PointCoord - 0.5;
-  float d = dot(c, c);
-  if (d > 0.25) discard;
-  float soft = smoothstep(0.25, 0.0, d);
+  vec2 dir = normalize(vDir);
+  vec2 local = vec2(dot(c, dir), dot(c, vec2(-dir.y, dir.x)));
+  local.x /= uStreak;
+  float d = dot(local, local) * 4.0;             // 0 at centre, 1 at the sprite edge
+  if (d > 1.0) discard;
+
   vec3 col = texture(uColorLUT, vec2(clamp(vStop, 0.0, 1.0), 0.5)).rgb;
-  fragColor = vec4(col, soft * vAlpha * uParticleAlpha);
+
+  // A hot core inside a coloured halo. The core is what survives the low bloom this scene now
+  // runs, and it is what makes a particle read as a discrete cell in the stream rather than as
+  // more of the tube it is inside.
+  float halo = smoothstep(1.0, 0.0, d);
+  float core = smoothstep(0.35, 0.0, d) * (0.35 + 0.65 * vFast);
+  vec3 lit = mix(col, mix(col, vec3(1.0), 0.75), core);
+
+  float a = (halo * 0.55 + core * 0.55) * vAlpha * uParticleAlpha;
+  fragColor = vec4(lit * (1.0 + core * 0.30), a);
 }`;
 
 export function buildFlow(ctx, data) {
@@ -94,9 +125,16 @@ export function buildFlow(ctx, data) {
       cl[o] = sp[i].x; cl[o + 1] = sp[i].y; cl[o + 2] = sp[i].z; cl[o + 3] = 1;
     }
     const stop = colorscale.wssToStop(meanWss(vsl));
-    const baseSpeed = 0.06 + 0.22 * stop;
+    // Speed is set in scene units per second and then converted to fraction-of-vessel per
+    // second, so a particle physically moves faster where shear is higher rather than merely
+    // completing whatever vessel it is in at the same rate. Before this, a short coronary and
+    // the whole descending aorta were traversed in the same time, which read as the aorta being
+    // fast and everything else crawling. Illustrative, like the rest of the flow model.
+    const lengthUnits = Math.max(curve.getLength(), 1e-3);
+    const unitsPerSecond = 5 + 34 * stop;
+    const baseSpeed = Math.min(unitsPerSecond / lengthUnits, 0.9);
     meta[vi * 4] = vsl.radius; meta[vi * 4 + 1] = stop; meta[vi * 4 + 2] = baseSpeed; meta[vi * 4 + 3] = 0;
-    lengthFactor[vi] = Math.max(0.35, Math.min(1, curve.getLength() / 60));
+    lengthFactor[vi] = Math.max(0.35, Math.min(1, lengthUnits / 60));
   }
   const centerlineTex = new T.DataTexture(cl, MAX_SAMPLES, nV, T.RGBAFormat, T.FloatType);
   centerlineTex.minFilter = centerlineTex.magFilter = T.NearestFilter; centerlineTex.needsUpdate = true;
@@ -140,9 +178,11 @@ export function buildFlow(ctx, data) {
 
   const uniforms = {
     uCenterline: { value: centerlineTex }, uMeta: { value: metaTex }, uColorLUT: { value: colorLUT },
-    uTime: { value: 0 }, uSpeedScale: { value: 1 }, uSizeScale: { value: 230 },
-    uPixelRatio: { value: ctx.renderer.getPixelRatio() }, uMaxPointSize: { value: 64 },
+    uTime: { value: 0 }, uSpeedScale: { value: 1 }, uSizeScale: { value: 300 },
+    uPixelRatio: { value: ctx.renderer.getPixelRatio() }, uMaxPointSize: { value: 110 },
     uParticleAlpha: { value: 0.9 },
+    // How far a particle is stretched along the flow. 1.0 is the old round dot.
+    uStreak: { value: 3.4 },
   };
   const mat = new T.ShaderMaterial({
     glslVersion: T.GLSL3, vertexShader: VERT, fragmentShader: FRAG, uniforms,
@@ -159,7 +199,11 @@ export function buildFlow(ctx, data) {
   function applyCount() {
     points.visible = tier !== 'off' && current > 0;
     geo.setDrawRange(0, Math.max(0, Math.min(current, N)));
-    uniforms.uParticleAlpha.value = current > 0 ? 0.9 / Math.sqrt(current / 8000) : 0; // tier-invariant luminance
+    // Tier-invariant luminance, and streak-invariant too: an elongated sprite covers uStreak
+    // times the area of the round one it replaced, so without dividing it through, turning on
+    // streaks alone multiplies the total light the flow emits and blows the scene out.
+    uniforms.uParticleAlpha.value = current > 0
+      ? (0.9 / Math.sqrt(current / 8000)) / uniforms.uStreak.value : 0;
     ctx.state.particleCount = points.visible ? current : 0;
   }
   applyCount();
@@ -200,6 +244,8 @@ export function buildFlow(ctx, data) {
     refreshColorLUT() { colorLUT.image.data.set(buildLUT()); colorLUT.needsUpdate = true; },
     setColorblind() { colorscale && this.refreshColorLUT(); },
     setPixelRatio(r) { uniforms.uPixelRatio.value = r; },
+    setStreak(v) { uniforms.uStreak.value = Math.max(1, v); },
+    getStreak() { return uniforms.uStreak.value; },
     setDisturbedVessels(source, idSet) { disturbBy.set(source, new Set(idSet || [])); recomputeDisturb(); },
     getDisturbedCount() { let n = 0; for (let v = 0; v < nV; v++) if (meta[v * 4 + 3] > 0.5) n++; return n; },
   };

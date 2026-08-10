@@ -109,7 +109,7 @@ function init() {
   composer.addPass(new RenderPass(scene, camera));
   // Low bloom: enough to keep the WSS colours reading as luminous data, not so much that lit
   // tissue washes out. The old value (0.72) belonged to the all-emissive x-ray look.
-  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.38, 0.5, 0.85);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.34, 0.45, 0.86);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   composer.setPixelRatio(renderer.getPixelRatio());

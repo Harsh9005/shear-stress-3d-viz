@@ -7,7 +7,7 @@
 //        [--width 1600 --height 1000] [--action scenario:stenosis|journey|colorblind] \
 //        [--settle 1400] [--frames 60 --orbit]   (frames => writes NNN.png sequence for a GIF)
 import puppeteer from 'puppeteer-core';
-import { mkdirSync } from 'fs';
+import { mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { dirname, basename, join } from 'path';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -99,6 +99,16 @@ try {
 
   if (frames > 0) {
     const base = out.replace(/\.png$/, '');
+    // Clear any earlier sequence at this base first. A shorter run leaves the tail of a longer
+    // one behind, and ffmpeg's %03d reads straight through the leftovers — which is how a
+    // README GIF ended up ending with sixteen frames of a previous build.
+    const dir = dirname(base);
+    const prefix = basename(base) + '_';
+    let stale = 0;
+    for (const f of readdirSync(dir)) {
+      if (f.startsWith(prefix) && f.endsWith('.png')) { unlinkSync(join(dir, f)); stale++; }
+    }
+    if (stale) console.error(`[capture] removed ${stale} stale frame(s) at ${base}_*.png`);
     for (let i = 0; i < frames; i++) {
       if (orbit) await page.evaluate(({ n, total }) => {
         const hl = window.__hl, cam = hl.camera, t = hl.controls.target;
