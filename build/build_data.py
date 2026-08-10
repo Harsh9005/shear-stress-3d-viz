@@ -156,54 +156,160 @@ GROUP_COLORS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Real anatomy, produced offline by build/anatomy/ from BodyParts3D (CC BY-SA 2.1 Japan).
+# Absent, everything below falls back to the hand-drawn geometry, so the data layer still
+# builds on a clean checkout before the anatomy pipeline has been run.
+# ---------------------------------------------------------------------------
+ANATOMY_PATH = os.path.join(HERE, "anatomy", "vessels.json")
+
+
+def load_anatomy():
+    if not os.path.exists(ANATOMY_PATH):
+        return {}
+    with open(ANATOMY_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+ANATOMY = load_anatomy()
+
+# The authored radii are about half of life size: at the fitted 5.78 mm per scene unit, the
+# ascending aorta's 1.4 would be a 16 mm vessel where a real one is near 30 mm. Now that the
+# vessels sit inside a real body at a real scale, that undersizing reads as thin threads. One
+# documented factor brings the whole tree to roughly life size rather than 37 hand edits.
+# Geometry only — no WSS value depends on it.
+RADIUS_SCALE = 1.8
+
+
 def build_vessels():
+    """
+    Vessel geometry, preferring real anatomy over the hand-drawn placeholder paths.
+
+    Every vessel carries a `provenance`: "anatomical" means the centerline was extracted from
+    the segmented cadaver mesh named in `source`; "schematic" means this source has no such
+    vessel (it segments no limb arteries, no cerebral arteries, no portal or hepatic vein and no
+    lymphatics) and the path is authored — for the limbs, seated inside the real limb by
+    build/anatomy/limbs.py. WSS values are untouched by any of this.
+    """
+    anat = ANATOMY.get("vessels", {})
+    limbs = ANATOMY.get("limbPaths", {})
     out = []
     for name, path, radius, wss, group, note in _VESSELS:
+        vid = slug(name)
         lo, hi = wss
         mean = (lo + hi) / 2.0
-        out.append({
-            "id": slug(name), "name": name, "group": group,
-            "path": [[float(a) for a in p] for p in path],
-            "radius": float(radius), "wss": [float(lo), float(hi)],
+        entry = {
+            "id": vid, "name": name, "group": group,
+            "radius": round(float(radius) * RADIUS_SCALE, 3), "wss": [float(lo), float(hi)],
             "regime": regime_for(mean), "note": note,
-        })
+        }
+        if vid in anat:
+            entry["path"] = [[float(a) for a in p] for p in anat[vid]["path"]]
+            entry["provenance"] = "anatomical"
+            entry["source"] = anat[vid]["sourceName"]
+        elif vid in limbs:
+            entry["path"] = [[float(a) for a in p] for p in limbs[vid]]
+            entry["provenance"] = "schematic"
+        else:
+            entry["path"] = [[float(a) for a in p] for p in path]
+            entry["provenance"] = "schematic"
+        out.append(entry)
     return out
 
 
+def vessel_point(vessels, vessel_id, t_along):
+    """
+    A point a fraction `t_along` down a vessel's centerline.
+
+    Hotspots and lab targets are anchored this way rather than by absolute coordinates so that
+    re-deriving a vessel's path moves everything attached to it. The previous absolute
+    coordinates silently desynchronised the moment any path changed.
+    """
+    v = next((x for x in vessels if x["id"] == vessel_id), None)
+    if v is None:
+        raise KeyError(f"unknown vessel id: {vessel_id}")
+    pts = v["path"]
+    if len(pts) == 1:
+        return list(pts[0])
+    seg = []
+    total = 0.0
+    for a, b in zip(pts, pts[1:]):
+        d = math.dist(a, b)
+        seg.append(d)
+        total += d
+    if total <= 0:
+        return list(pts[0])
+    target = max(0.0, min(1.0, float(t_along))) * total
+    run = 0.0
+    for i, d in enumerate(seg):
+        if run + d >= target or i == len(seg) - 1:
+            f = 0.0 if d == 0 else (target - run) / d
+            a, b = pts[i], pts[i + 1]
+            return [round(a[k] + (b[k] - a[k]) * f, 3) for k in range(3)]
+        run += d
+    return list(pts[-1])
+
+
 # Capillary / sinusoidal beds (point clouds) — the low-shear extreme.
+# Beds are anchored to the organ they sit in, so the point cloud follows the real organ mesh
+# rather than a coordinate typed next to it.
 _BEDS = [
-    ("Hepatic Sinusoidal Bed", (9, 0, 21), (3.5, 2.5, 3), (0.1, 0.6),
+    ("Hepatic Sinusoidal Bed", "liver", (9, 0, 21), (3.5, 2.5, 3), (0.1, 0.6),
      "Ultra-low shear lets nanoparticles marginate; fenestrated endothelium allows access"),
 ]
 
 
 def build_beds():
     out = []
-    for name, center, spread, wss, note in _BEDS:
+    for name, organ_id, center, spread, wss, note in _BEDS:
         lo, hi = wss
         out.append({
-            "id": slug(name), "name": name, "center": list(map(float, center)),
+            "id": slug(name), "name": name, "organ": organ_id,
+            "center": organ_center(organ_id, center),
             "spread": list(map(float, spread)), "wss": [float(lo), float(hi)],
             "regime": regime_for((lo + hi) / 2.0), "note": note,
         })
     return out
 
 
+# Organs. `id` matches the node names in docs/assets/anatomy/organs.glb, so the mesh, the
+# tooltip note and any bed or tumor anchored to the organ all resolve through one key. Positions
+# are the real mesh centroids when the anatomy pipeline has run; the fallbacks below are the old
+# hand-placed values and are only used on a checkout without built assets.
 _ORGANS = [
-    ("Liver", (9, -1, 20), "Key clearance organ; contains low-shear sinusoidal beds"),
-    ("R. Kidney", (10, -2, 15), "High-flow filtration organ"),
-    ("L. Kidney", (-10, -2, 16), "High-flow filtration organ"),
-    ("Spleen", (-10, -1, 17), "Filtration slits test nanoparticle deformability"),
-    ("R. Lung", (9, -2, 37), "Pulmonary capillary bed"),
-    ("L. Lung", (-9, -2, 38), "Pulmonary capillary bed"),
+    ("liver", "Liver", (9, -1, 20), "Key clearance organ; contains low-shear sinusoidal beds"),
+    ("right_kidney", "R. Kidney", (10, -2, 15), "High-flow filtration organ"),
+    ("left_kidney", "L. Kidney", (-10, -2, 16), "High-flow filtration organ"),
+    ("spleen", "Spleen", (-10, -1, 17), "Filtration slits test nanoparticle deformability"),
+    ("right_lung", "R. Lung", (9, -2, 37), "Pulmonary capillary bed"),
+    ("left_lung", "L. Lung", (-9, -2, 38), "Pulmonary capillary bed"),
+    ("brain", "Brain", (0, 0, 66), "Behind the blood-brain barrier; carrier access is limited"),
+    ("pancreas", "Pancreas", (0, -4, 8), "Dense stroma raises interstitial pressure"),
 ]
 
 
+def organ_center(organ_id, fallback):
+    """Real mesh centroid where available, else the hand-placed position."""
+    o = ANATOMY.get("organs", {}).get(organ_id)
+    return [float(c) for c in o["centroid"]] if o else [float(c) for c in fallback]
+
+
 def build_organs():
-    return [{"name": n, "pos": list(map(float, p)), "note": note} for n, p, note in _ORGANS]
+    return [
+        {"id": oid, "name": name, "pos": organ_center(oid, pos), "note": note}
+        for oid, name, pos, note in _ORGANS
+    ]
 
 
-LANDMARKS = {"heart": {"pos": [1.0, -5.0, 35.0], "radii": [3.5, 3.0, 4.5]}}
+def build_landmarks():
+    heart = ANATOMY.get("heart")
+    out = {
+        "heart": {"pos": heart["center"] if heart else [1.0, -5.0, 35.0],
+                  "radii": [c / 2 for c in heart["extents"]] if heart else [3.5, 3.0, 4.5]},
+    }
+    if ANATOMY.get("bodyBounds"):
+        out["body"] = {"bounds": ANATOMY["bodyBounds"]}
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -213,17 +319,31 @@ ATHERO_VESSELS = ["r_common_carotid", "l_common_carotid", "aortic_arch",
                   "r_common_iliac", "l_common_iliac", "l_coronary_artery", "r_coronary_artery"]
 STENOSIS_VESSELS = ["r_common_carotid", "l_common_iliac", "descending_aorta"]
 
-ATHERO_HOTSPOTS = [
-    {"pos": [3.3, -1, 58], "label": "Plaque", "kind": "plaque"},
-    {"pos": [-3.3, -0.5, 58], "label": "Plaque", "kind": "plaque"},
-    {"pos": [-1, 1, 48], "label": "Arch plaque", "kind": "plaque"},
+# Hotspots are anchored to (vessel, fraction along it) and their coordinates are derived at
+# build time. They used to be absolute positions typed next to the old hand-drawn paths, which
+# meant any change to a vessel's course left them floating somewhere in the body with nothing to
+# mark. Anchoring them makes that failure impossible.
+ATHERO_ANCHORS = [
+    ("r_common_carotid", 0.15, "Plaque", "plaque"),      # carotid bifurcation, atheroprone
+    ("l_common_carotid", 0.15, "Plaque", "plaque"),
+    ("aortic_arch", 0.55, "Arch plaque", "plaque"),      # inner curvature of the arch
 ]
-STENOSIS_HOTSPOTS = [
-    {"pos": [3.2, -0.5, 57], "label": "Stenosis", "kind": "stenosis"},
-    {"pos": [-4, -4, -15], "label": "Stenosis", "kind": "stenosis"},
-    {"pos": [0, -6, 18], "label": "Stenosis", "kind": "stenosis"},
+STENOSIS_ANCHORS = [
+    ("r_common_carotid", 0.30, "Stenosis", "stenosis"),
+    ("l_common_iliac", 0.45, "Stenosis", "stenosis"),
+    ("descending_aorta", 0.60, "Stenosis", "stenosis"),
 ]
-def build_scenarios():
+
+
+def build_hotspots(vessels, anchors):
+    return [
+        {"pos": vessel_point(vessels, vid, t), "vesselId": vid, "tAlong": t,
+         "label": label, "kind": kind}
+        for vid, t, label, kind in anchors
+    ]
+def build_scenarios(vessels):
+    athero_hotspots = build_hotspots(vessels, ATHERO_ANCHORS)
+    stenosis_hotspots = build_hotspots(vessels, STENOSIS_ANCHORS)
     athero_change = {
         "vessels": ATHERO_VESSELS, "provenance": "literature", "regime": "low_oscillatory",
         "displayWss": [0.5, 4.0], "openEnded": False,
@@ -242,17 +362,17 @@ def build_scenarios():
          "blurb": "Plaque forms where shear is low and oscillatory (below ~4 dyne/cm²) — typically at "
                   "bifurcations. Disturbed flow drives a pro-inflammatory endothelium that upregulates "
                   "VCAM-1 and ICAM-1, which double as nanoparticle adhesion targets.",
-         "changes": [athero_change], "hotspots": ATHERO_HOTSPOTS, "beds": [], "dim": True},
+         "changes": [athero_change], "hotspots": athero_hotspots, "beds": [], "dim": True},
         {"id": "stenosis", "label": "Arterial stenosis",
          "blurb": "Severe narrowing creates shear hotspots above 1000 dyne/cm² — extreme stress that can "
                   "strip a carrier's hydration shell and rupture soft lipid bilayers, causing premature "
                   "burst release before the target is reached.",
-         "changes": [stenosis_change], "hotspots": STENOSIS_HOTSPOTS, "beds": [], "dim": True},
+         "changes": [stenosis_change], "hotspots": stenosis_hotspots, "beds": [], "dim": True},
         {"id": "combined", "label": "Combined pathology",
          "blurb": "Co-existing atherosclerosis and stenosis in one patient — and you can layer tumors at "
                   "any site on top, for the full hemodynamic range a carrier must survive.",
          "changes": [athero_change, stenosis_change],
-         "hotspots": ATHERO_HOTSPOTS + STENOSIS_HOTSPOTS, "beds": [], "dim": True},
+         "hotspots": athero_hotspots + stenosis_hotspots, "beds": [], "dim": True},
     ]
 
 
@@ -261,36 +381,61 @@ def build_scenarios():
 # Each site is the honest low/oscillatory regime; representativeWss is for colour only
 # (schematic), notes are qualitative with NO digits-as-WSS, and nearVessels recolour locally.
 # ---------------------------------------------------------------------------
+# Sites are anchored to the organ they occur in: `pos` is that organ's real mesh centroid, so a
+# tumor overlay lands inside the organ instead of at a coordinate typed beside it. The coordinate
+# in each row is only the fallback for a checkout with no built anatomy.
 _TUMOR_SITES = [
-    ("Brain", [0, 0, 66], [3.0, 3.0, 3.5],
+    ("Brain", "brain", [0, 0, 66], [3.0, 3.0, 3.5],
      "Glioblastoma neovasculature is chaotic and leaky; the blood-brain barrier limits carrier access.",
      ["r_common_carotid", "l_common_carotid", "r_jugular_vein", "l_jugular_vein"]),
-    ("Right lung", [9, -2, 37], [2.6, 2.0, 2.8],
+    ("Right lung", "right_lung", [9, -2, 37], [2.6, 2.0, 2.8],
      "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
      ["r_pulmonary_artery", "r_pulmonary_vein"]),
-    ("Left lung", [-9, -2, 38], [2.6, 2.0, 2.8],
+    ("Left lung", "left_lung", [-9, -2, 38], [2.6, 2.0, 2.8],
      "Pulmonary tumor vessels are tortuous with low, oscillatory shear; first-pass capillary trapping affects carriers.",
      ["l_pulmonary_artery", "l_pulmonary_vein"]),
-    ("Liver", [9, -1, 20], [3.0, 2.5, 2.8],
+    ("Liver", "liver", [9, -1, 20], [3.0, 2.5, 2.8],
      "Hepatic tumors disrupt the low-shear sinusoidal architecture; the liver is also a major clearance organ.",
      ["hepatic_artery", "hepatic_vein", "portal_vein", "hepatic_arteriole"]),
-    ("Kidney", [10, -2, 15], [2.0, 1.8, 2.0],
+    ("Kidney", "right_kidney", [10, -2, 15], [2.0, 1.8, 2.0],
      "Renal tumor vasculature is disorganised within a high-flow filtration organ.",
      ["r_renal_artery", "l_renal_artery", "renal_arteriole"]),
-    ("Pancreas", [0, -4, 8], [2.5, 1.8, 2.2],
+    ("Pancreas", "pancreas", [0, -4, 8], [2.5, 1.8, 2.2],
      "Dense desmoplastic stroma raises interstitial pressure and impairs convective transport.",
      ["splenic_artery", "mesenteric_arteriole"]),
-    ("Breast", [6, -7, 28], [2.2, 1.6, 2.2],
+    ("Breast", None, [6, -7, 28], [2.2, 1.6, 2.2],
      "Disorganised tumor microvasculature with low, oscillatory shear and elevated interstitial pressure.",
      ["r_subclavian_artery"]),
 ]
 
 
+# ---------------------------------------------------------------------------
+# Simulation-lab targets. These lived as three hard-coded coordinate triples inside
+# docs/js/simlab.js — outside the single source of truth, and silently wrong the moment a vessel
+# path moved. They are anchors on vessels now, like the hotspots.
+# ---------------------------------------------------------------------------
+_LAB_TARGETS = [
+    ("carotid", "Carotid bifurcation", "r_common_carotid", 0.12, "low", "10–20 dyne/cm²", False),
+    ("arch", "Aortic arch", "aortic_arch", 0.5, "moderate", "10–70 dyne/cm²", False),
+    ("iliac", "Iliac bifurcation", "r_common_iliac", 0.05, "moderate", "10–70 dyne/cm²", False),
+]
+
+
+def build_lab_targets(vessels):
+    return [
+        {"id": tid, "label": label, "vesselId": vid, "tAlong": t,
+         "pos": vessel_point(vessels, vid, t), "regime": regime,
+         "wssText": wss_text, "disturbed": disturbed}
+        for tid, label, vid, t, regime, wss_text, disturbed in _LAB_TARGETS
+    ]
+
+
 def build_tumor_sites():
     out = []
-    for name, pos, spread, note, near in _TUMOR_SITES:
+    for name, organ_id, pos, spread, note, near in _TUMOR_SITES:
         out.append({
-            "id": slug(name), "label": name, "pos": list(map(float, pos)),
+            "id": slug(name), "label": name, "organ": organ_id,
+            "pos": organ_center(organ_id, pos) if organ_id else list(map(float, pos)),
             "spread": list(map(float, spread)), "note": note,
             "nearVessels": list(near), "regime": "low_oscillatory",
             "representativeWss": 1.0, "schematic": True,
@@ -382,6 +527,8 @@ def build_panels():
 def build_data():
     colorscale = [{"stop": round(_stop(c["wss"]), 6), "wss": c["wss"], "rgb": c["rgb"]}
                   for c in COLORSCALE]
+    # Built once and threaded through: hotspots and lab targets are positions ON these paths.
+    vessels = build_vessels()
     return {
         "meta": {
             "title": "The Hemodynamic Landscape",
@@ -391,14 +538,21 @@ def build_data():
         },
         "colorscale": colorscale,
         "groupColors": GROUP_COLORS,
-        "vessels": build_vessels(),
+        "vessels": vessels,
         "beds": build_beds(),
         "organs": build_organs(),
-        "landmarks": LANDMARKS,
-        "scenarios": build_scenarios(),
+        "landmarks": build_landmarks(),
+        "scenarios": build_scenarios(vessels),
         "tumorSites": build_tumor_sites(),
+        "labTargets": build_lab_targets(vessels),
         "journey": build_journey(),
         "panels": build_panels(),
+        "anatomy": {
+            "source": ANATOMY.get("source"),
+            "mmPerUnit": ANATOMY.get("transform", {}).get("mm_per_unit"),
+            "anatomicalVessels": sum(1 for v in vessels if v["provenance"] == "anatomical"),
+            "schematicVessels": sum(1 for v in vessels if v["provenance"] == "schematic"),
+        } if ANATOMY else None,
     }
 
 

@@ -10,9 +10,10 @@ export function createSimLab(ctx, data, vessels, flow, tumors) {
   const fixedTargets = [];
   (stenosis ? stenosis.hotspots : []).forEach((h, i) =>
     fixedTargets.push({ id: 'sten' + i, label: 'Stenosis ' + (i + 1), pos: h.pos, regime: 'extreme', wssText: '>1000 dyne/cm²', disturbed: true }));
-  fixedTargets.push({ id: 'carotid', label: 'Carotid bifurcation', pos: [2.5, 0.5, 55], regime: 'low', wssText: '10–20 dyne/cm²', disturbed: false });
-  fixedTargets.push({ id: 'arch', label: 'Aortic arch', pos: [-1, 1, 48], regime: 'moderate', wssText: '10–70 dyne/cm²', disturbed: false });
-  fixedTargets.push({ id: 'iliac', label: 'Iliac bifurcation', pos: [0, -5, -8], regime: 'moderate', wssText: '10–70 dyne/cm²', disturbed: false });
+  // The anatomical landmarks come from the data layer. They used to be three coordinate triples
+  // written here, which put them outside the single source of truth and left them pointing at
+  // empty space as soon as a vessel path changed.
+  for (const t of (data.labTargets || [])) fixedTargets.push({ ...t });
 
   function targets() {
     const t = fixedTargets.slice();

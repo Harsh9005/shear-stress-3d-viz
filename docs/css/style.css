@@ -238,3 +238,9 @@ body.simlab-active aside, body.simlab-active #bottombar { opacity: 0; pointer-ev
   * { animation-duration: 0.001s !important; transition-duration: 0.08s !important; }
   #loading .heartbeat { animation: none; }
 }
+
+/* Vessel tooltip: where the geometry came from. Real anatomy reads as a quiet fact; a
+   schematic course is called out so it is never mistaken for measured geometry. */
+.tip-prov { display: block; margin-top: .35rem; font-size: .72rem; letter-spacing: .02em;
+  color: #7fd8c0; }
+.tip-prov-schematic { color: #d8b271; }

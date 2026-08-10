@@ -88,6 +88,9 @@ try {
         await sleep(1700);
         await page.evaluate(() => { const b = [...document.querySelectorAll('.jbtn')].find(x => x.dataset.act === 'next'); if (b) b.click(); });
       }
+    } else if (action.startsWith('eval:')) {
+      // Arbitrary scene tweak before the shot, e.g. --action "eval:__hl.anatomy.setCutaway(false)".
+      await page.evaluate(action.slice(5));
     } else if (action === 'colorblind') {
       await page.evaluate(() => { const cb = [...document.querySelectorAll('.ctl-toggle')].find(x => x.parentElement.textContent.includes('Colour-blind')); if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); } });
     }

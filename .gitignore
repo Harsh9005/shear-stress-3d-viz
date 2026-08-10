@@ -14,3 +14,7 @@ __pycache__/
 tools/node_modules/
 tools/shots/
 tools/package-lock.json
+
+# BodyParts3D source archive (547 MB) — fetched by build/anatomy/fetch_source.py,
+# never committed. Only the derived GLBs under docs/assets/anatomy/ ship.
+build/anatomy/.cache/

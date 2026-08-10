@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 
 export function buildUI(ctx, data, mods) {
-  const { vessels, flow, panels, scenarios, journey, tumors, simlab } = mods;
+  const { vessels, flow, panels, scenarios, journey, tumors, simlab, anatomy } = mods;
   const left = document.getElementById('panel-left');
   const right = document.getElementById('panel-right');
 
@@ -56,6 +56,17 @@ export function buildUI(ctx, data, mods) {
   });
   lySec.append(flowRow.el, densRow, cbRow.el);
 
+  // Body-surface controls. Kept out of the DOM entirely when the anatomy assets did not load,
+  // so a broken control never appears.
+  if (anatomy) {
+    const bodyRow = toggleRow('Body surface', true, (on) => anatomy.setBodyVisible(on));
+    const cutRow = toggleRow('Torso cutaway', true, (on) => anatomy.setCutaway(on));
+    lySec.append(bodyRow.el, cutRow.el);
+    anatomy.ready.then((ok) => {
+      if (!ok) { bodyRow.el.remove(); cutRow.el.remove(); }
+    });
+  }
+
   left.append(scSec, lySec);
 
   // ── Tumor sites (combinable) ──
@@ -108,6 +119,8 @@ export function buildUI(ctx, data, mods) {
   const helpBtn = document.getElementById('help-btn');
   const modal = document.getElementById('about-modal');
   if (helpBtn && modal) {
+    const totalVessels = data.vessels.length;
+    const anatomicalCount = data.vessels.filter((v) => v.provenance === 'anatomical').length;
     modal.innerHTML = `<div class="modal-card">
       <button class="modal-close" aria-label="Close">×</button>
       <h2>About</h2>
@@ -117,8 +130,16 @@ export function buildUI(ctx, data, mods) {
       <p>A circulating nanocarrier must survive this entire range. Use the <b>scenarios</b> to see how
       disease reshapes the landscape, launch the <b>nanoparticle journey</b> to follow a carrier through
       it, and read <b>The Shear Gap</b> to see why benchtop tests — run in near-still fluid — miss these forces.</p>
+      <p>The body, organs and heart are <b>real human anatomy</b>, and so are most of the vessels:
+      ${anatomicalCount} of the ${totalVessels} vessel centerlines shown were extracted from named
+      segmented cadaver meshes. The rest — the limb vessels, the lymphatics and the microvessels —
+      have no counterpart in that source and are schematic, placed inside the real limbs. Hover any
+      vessel to see which it is.</p>
       <p class="modal-foot">WSS magnitudes are representative values consistent with the hemodynamics and
-      nanomedicine literature.</p>
+      nanomedicine literature.<br>
+      Anatomy: <b>BodyParts3D</b>, &copy; The Database Center for Life Science, licensed under
+      <a href="https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en" target="_blank" rel="noopener">CC
+      Attribution-Share Alike 2.1 Japan</a>. The derived meshes in this site carry the same licence.</p>
     </div>`;
     const close = () => { modal.hidden = true; };
     helpBtn.addEventListener('click', () => { modal.hidden = false; });
@@ -148,7 +169,13 @@ export function buildUI(ctx, data, mods) {
 
   function showTip(u, ev) {
     if (u.kind === 'vessel') {
-      tip.innerHTML = `<b>${u.name}</b><span class="tip-wss">${u.wss[0]} – ${u.wss[1]} dyne/cm²</span><span class="tip-note">${u.note}</span>`;
+      // Say where the geometry came from. Most centerlines are real segmented anatomy; the
+      // limb, lymphatic and microvessel ones cannot be, and a reader should not have to guess
+      // which they are looking at.
+      const prov = u.provenance === 'anatomical'
+        ? `<span class="tip-prov">real anatomy — ${u.source}</span>`
+        : '<span class="tip-prov tip-prov-schematic">schematic course</span>';
+      tip.innerHTML = `<b>${u.name}</b><span class="tip-wss">${u.wss[0]} – ${u.wss[1]} dyne/cm²</span><span class="tip-note">${u.note}</span>${prov}`;
       vessels.highlight(u.id);
       panels && panels.showVessel(u);
     } else if (u.kind === 'organ') {

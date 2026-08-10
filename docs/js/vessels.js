@@ -1,4 +1,5 @@
-// vessels.js — luminous WSS-coloured tubes, sinusoidal beds, organ markers, pathological hotspots.
+// vessels.js — WSS-coloured tubes, sinusoidal beds and pathological hotspots.
+// Organs are no longer stubbed here; anatomy.js loads the real meshes.
 import * as THREE from 'three';
 
 const VERT = `
@@ -85,12 +86,12 @@ export function buildVasculature(ctx, data) {
     const mat = new T.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG,
       uniforms: {
-        uColor: { value: baseColor.clone() }, uEmissive: { value: 0.85 },
+        uColor: { value: baseColor.clone() }, uEmissive: { value: 1.05 },
         uOpacity: { value: 1.0 }, uDim: { value: 1.0 }, uHi: { value: 0.0 },
       },
     });
     const mesh = new T.Mesh(geo, mat);
-    mesh.userData = { kind: 'vessel', id: v.id, name: v.name, wss: v.wss, regime: v.regime, note: v.note, group: v.group };
+    mesh.userData = { kind: 'vessel', id: v.id, name: v.name, wss: v.wss, regime: v.regime, note: v.note, group: v.group, provenance: v.provenance, source: v.source };
     group.add(mesh);
     items.set(v.id, { mesh, mat, baseColor, vessel: v });
 
@@ -111,18 +112,9 @@ export function buildVasculature(ctx, data) {
     bedGroup.add(bed);
   }
 
-  // Organ markers (subtle).
-  const organGroup = new T.Group();
-  for (const o of data.organs) {
-    const geo = new T.SphereGeometry(0.7, 12, 10);
-    const mat = new T.MeshBasicMaterial({ color: 0x88aadd, transparent: true, opacity: 0.28 });
-    const m = new T.Mesh(geo, mat);
-    m.position.set(o.pos[0], o.pos[1], o.pos[2]);
-    m.userData = { kind: 'organ', name: o.name, note: o.note };
-    organGroup.add(m); pickables.push(m);
-  }
-
-  group.add(bedGroup, organGroup);
+  // Organs are real geometry now — anatomy.js loads them and registers them as pick targets.
+  // The 0.7-radius spheres that used to stand in for them here have been removed.
+  group.add(bedGroup);
   scene.add(group); scene.add(pickGroup);
 
   // ── Hotspot layer (rebuilt per scenario) ──

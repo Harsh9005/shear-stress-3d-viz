@@ -1,0 +1,48 @@
+Anatomy assets — licence and attribution
+========================================
+
+The GLB files in this directory (body.glb, organs.glb, heart.glb) are DERIVED WORKS of the
+BodyParts3D dataset. They are NOT covered by the MIT licence that covers the rest of this
+repository. They are licensed under Creative Commons Attribution-Share Alike 2.1 Japan, the
+same terms as the source.
+
+Required attribution
+--------------------
+
+    BodyParts3D, (c) The Database Center for Life Science
+    licensed under CC Attribution-Share Alike 2.1 Japan
+
+Source
+------
+
+    BodyParts3D 3.0, Database Center for Life Science (DBCLS), Japan
+    https://dbarchive.biosciencedbc.jp/en/bodyparts3d/
+    Archive used: BodyParts3D_3.0_obj_95.zip (2011-09-15)
+
+Licence
+-------
+
+    https://creativecommons.org/licenses/by-sa/2.1/jp/deed.en
+
+What was changed
+----------------
+
+These files are not the source meshes. The pipeline in build/anatomy/ does the following, and
+every step is reproducible from the scripts there:
+
+  * selects named parts by FMA identifier (see build/anatomy/parts.py)
+  * resolves composite parts — the heart, brain and lungs have no mesh of their own and are
+    defined as unions of primitives — and concatenates them
+  * removes stray disconnected shells; for the skin, keeps only the outer body surface, which
+    arrives as one shell among 31,130
+  * decimates to a web triangle budget (32,000 faces for the body; fewer for organs)
+  * applies a similarity transform — mirror in X, uniform scale, translation — fitted to
+    aortic landmarks, mapping the source's millimetre coordinates into this project's scene
+    frame (see build/anatomy/fit_transform.py and transform.json)
+
+Because CC BY-SA is share-alike, these derived meshes carry the same licence. Anyone reusing
+them must keep this notice and licence them alike. The repository's own source code remains
+under the MIT licence in the root LICENSE file.
+
+Vessel centerlines in build/anatomy/vessels.json are likewise derived from this source and
+carry the same licence and attribution.

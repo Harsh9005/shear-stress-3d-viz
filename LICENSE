@@ -1,3 +1,16 @@
+The MIT licence below covers this repository's source code.
+
+It does NOT cover the anatomy assets in docs/assets/anatomy/ (body.glb, organs.glb, heart.glb)
+or the centerlines in build/anatomy/vessels.json. Those are derived from BodyParts3D and are
+licensed under Creative Commons Attribution-Share Alike 2.1 Japan, which is share-alike:
+
+    BodyParts3D, (c) The Database Center for Life Science
+    licensed under CC Attribution-Share Alike 2.1 Japan
+
+See docs/assets/anatomy/LICENSE for the full notice and for what was changed.
+
+---
+
 MIT License
 
 Copyright (c) 2025 Harshvardhan Modh

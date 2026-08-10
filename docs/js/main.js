@@ -16,6 +16,7 @@ import { createScenarioController } from './scenarios.js';
 import { createJourney } from './journey.js';
 import { createTumors } from './tumors.js';
 import { createSimLab } from './simlab.js';
+import { createAnatomy } from './anatomy.js';
 
 const BG = 0x0b0e16;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -62,7 +63,9 @@ function init() {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(BG);
-  scene.fog = new THREE.Fog(BG, 180, 360);
+  // Fog reaches past the whole body (286 units tall); at the old 180-360 it was fading
+  // the far half of the figure into the background and muddying the tissue colour.
+  scene.fog = new THREE.Fog(BG, 380, 900);
 
   const camera = new THREE.PerspectiveCamera(42, width / height, 0.5, 2000);
   camera.up.set(0, 0, 1); // anatomical Z is vertical
@@ -77,32 +80,36 @@ function init() {
   // Don't let one-finger drag scroll-jack the page on touch.
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-  // Lighting (mainly for the MeshStandard fallback + ghost body; emissive does the rest).
-  scene.add(new THREE.AmbientLight(0x9fb4d0, 0.55));
-  const key = new THREE.DirectionalLight(0xffffff, 0.5); key.position.set(60, 80, 120); scene.add(key);
-  const rim = new THREE.DirectionalLight(0x4060a0, 0.35); rim.position.set(-80, -60, 40); scene.add(rim);
+  // Lighting rig for the medical-illustration read. anatomy.js lights tissue in its own shader
+  // so it looks the same from every angle; these lights shape the vessels.
+  scene.add(new THREE.AmbientLight(0x9fb4d0, 0.42));
+  const key = new THREE.DirectionalLight(0xffffff, 0.85); key.position.set(60, -90, 120); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xa8c0e0, 0.35); fill.position.set(-90, -40, 20); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0x5878b8, 0.5); rim.position.set(-40, 90, -60); scene.add(rim);
 
   const colorscale = createColorScale(DATA);
 
-  // ── Ghost body silhouette (back-face x-ray; hides seams, drawn before vessels) ──
-  buildGhostBody(scene);
-
-  // ── Heart (pulsing) ──
-  const heart = buildHeart(scene, DATA);
-
-  // ── Bounding box → frame the camera on the vasculature ──
-  const bbox = computeBounds(DATA);
-  const center = bbox.getCenter(new THREE.Vector3());
-  const size = bbox.getSize(new THREE.Vector3());
-  const radius = Math.max(size.x, size.z) * 0.62;
-  const framedDist = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.05;
-  controls.target.copy(center);
-  const framedPos = new THREE.Vector3(center.x + framedDist * 0.62, center.y - framedDist * 0.72, center.z + framedDist * 0.16);
+  // ── Frame the camera. Starts on the vasculature, then re-frames on the whole body once the
+  //    anatomy loads — the body is taller than the vessel tree (it has a head and feet), so
+  //    framing on vessels alone crops it. Re-framing is skipped the moment the viewer has
+  //    touched the controls, so it can never yank a camera out from under them. ──
+  const framedPos = new THREE.Vector3();
+  function frameOn(box) {
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.z) * 0.62;
+    const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.05;
+    controls.target.copy(center);
+    framedPos.set(center.x + dist * 0.62, center.y - dist * 0.72, center.z + dist * 0.16);
+  }
+  frameOn(computeBounds(DATA));
 
   // Post-processing
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.72, 0.4, 0.85);
+  // Low bloom: enough to keep the WSS colours reading as luminous data, not so much that lit
+  // tissue washes out. The old value (0.72) belonged to the all-emissive x-ray look.
+  const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.38, 0.5, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   composer.setPixelRatio(renderer.getPixelRatio());
@@ -123,7 +130,8 @@ function init() {
   };
 
   // ── Build subsystems (each guarded so one failure can't blank the app) ──
-  let vessels, flow, panels, scenarios, journey, tumors, simlab;
+  let vessels, flow, panels, scenarios, journey, tumors, simlab, anatomy;
+  try { anatomy = createAnatomy(ctx, DATA); } catch (e) { console.error('anatomy', e); }
   try { vessels = buildVasculature(ctx, DATA); } catch (e) { console.error('vessels', e); }
   try { flow = buildFlow(ctx, DATA); } catch (e) { console.error('flow', e); }
   try { panels = buildPanels(DATA, colorscale); } catch (e) { console.error('panels', e); }
@@ -131,7 +139,12 @@ function init() {
   try { tumors = createTumors(ctx, DATA, vessels, flow, scenarios); if (scenarios) scenarios.setTumors(tumors); } catch (e) { console.error('tumors', e); }
   try { journey = createJourney(ctx, DATA, vessels, flow); } catch (e) { console.error('journey', e); }
   try { simlab = createSimLab(ctx, DATA, vessels, flow, tumors); } catch (e) { console.error('simlab', e); }
-  try { buildUI(ctx, DATA, { vessels, flow, panels, scenarios, journey, tumors, simlab }); } catch (e) { console.error('ui', e); }
+  try { buildUI(ctx, DATA, { vessels, flow, panels, scenarios, journey, tumors, simlab, anatomy }); } catch (e) { console.error('ui', e); }
+
+  // Organs are pickable once their mesh has loaded; the raycaster reads this list live.
+  if (anatomy && vessels) {
+    anatomy.ready.then(() => { for (const m of anatomy.pickables) vessels.pickables.push(m); });
+  }
 
   // ── Resize ──
   function onResize() {
@@ -158,8 +171,26 @@ function init() {
   const seenIntro = sessionStorage.getItem('hl_seen_intro') === '1';
   let intro = !reducedMotion && !seenIntro;
   let introT = 0;
-  const introFrom = framedPos.clone().multiplyScalar(1.7).add(new THREE.Vector3(0, 0, 30));
+  const introFrom = new THREE.Vector3();
+  function setIntroFrom() {
+    introFrom.copy(framedPos).multiplyScalar(1.7).add(new THREE.Vector3(0, 0, 30));
+  }
+  setIntroFrom();
   camera.position.copy(intro ? introFrom : framedPos);
+
+  // Re-frame on the real body once it arrives, unless the viewer has already taken the camera.
+  let userMovedCamera = false;
+  controls.addEventListener('start', () => { userMovedCamera = true; });
+  if (anatomy) {
+    anatomy.ready.then(() => {
+      const box = anatomy.bounds();
+      if (!box || userMovedCamera) return;
+      frameOn(box);
+      setIntroFrom();
+      camera.position.copy(intro ? introFrom : framedPos);
+      controls.update();
+    });
+  }
   function endIntro() {
     intro = false; camera.position.copy(framedPos); controls.update();
     if (skipBtn) skipBtn.hidden = true;
@@ -193,7 +224,7 @@ function init() {
     setSize(w, h) { renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); },
     frame() { endIntro(); },
     scene, camera, renderer, controls, composer, bloom, scenarios, journey, flow, vessels, panels, tumors, simlab,
-    framedPos,
+    anatomy, framedPos,
   };
 
   function animate() {
@@ -207,7 +238,6 @@ function init() {
       if (introT >= 1) endIntro();
     }
 
-    if (heart && !reducedMotion) heart.update(clock.elapsedTime);
     for (const fn of updaters) fn(dt, clock.elapsedTime);
     controls.update();
     renderFrame();
@@ -232,54 +262,6 @@ function computeBounds(data) {
   for (const ves of data.vessels) for (const p of ves.path) box.expandByPoint(v.set(p[0], p[1], p[2]));
   for (const b of data.beds) box.expandByPoint(v.set(b.center[0], b.center[1], b.center[2]));
   return box;
-}
-
-function buildGhostBody(scene) {
-  const parts = [
-    [[0, -2, 12], [17, 11, 28]], [[0, 0, 73], [9, 9, 11]], [[0, -1, 58], [5.5, 5, 7]],
-    [[20, -1, 38], [4.5, 4, 14]], [[24, 0, 12], [3.5, 3, 13]],
-    [[-20, -1, 38], [4.5, 4, 14]], [[-24, 0, 12], [3.5, 3, 13]],
-    [[8, -1, -30], [7, 6.5, 22]], [[8, 0, -65], [5, 4.5, 18]],
-    [[-8, -1, -30], [7, 6.5, 22]], [[-8, 0, -65], [5, 4.5, 18]],
-    [[0, -2, -10], [14, 10, 8]], [[16, -1, 48], [6, 5, 5]], [[-16, -1, 48], [6, 5, 5]],
-  ];
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0x6f86b0, transparent: true, opacity: 0.06, side: THREE.BackSide,
-    depthWrite: false, blending: THREE.AdditiveBlending,
-  });
-  const group = new THREE.Group();
-  group.renderOrder = -1;
-  for (const [c, r] of parts) {
-    const geo = new THREE.SphereGeometry(1, 24, 18);
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(c[0], c[1], c[2]); m.scale.set(r[0], r[1], r[2]);
-    group.add(m);
-  }
-  scene.add(group);
-}
-
-function buildHeart(scene, data) {
-  const L = data.landmarks.heart;
-  const geo = new THREE.SphereGeometry(1, 28, 20);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x8a1a1a, emissive: 0xb4221e, emissiveIntensity: 0.9,
-    roughness: 0.5, metalness: 0.0, transparent: true, opacity: 0.92,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(L.pos[0], L.pos[1], L.pos[2]);
-  const base = new THREE.Vector3(L.radii[0], L.radii[1], L.radii[2]);
-  mesh.scale.copy(base);
-  scene.add(mesh);
-  return {
-    mesh,
-    update(t) {
-      // double-thump heartbeat ~1 Hz
-      const beat = Math.pow(Math.sin(t * Math.PI) * 0.5 + 0.5, 8);
-      const s = 1 + beat * 0.07;
-      mesh.scale.copy(base).multiplyScalar(s);
-      mat.emissiveIntensity = 0.8 + beat * 0.5;
-    },
-  };
 }
 
 try { init(); } catch (e) { fail('Could not start the visualization: ' + (e && e.message ? e.message : e)); }
