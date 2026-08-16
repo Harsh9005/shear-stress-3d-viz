@@ -50,10 +50,16 @@ export function createColorScale(data) {
     return colorblind ? sampleRamp(CIVIDIS, stop) : sampleRamp(heat, stop);
   }
 
-  // THREE.Color in linear-correct space for emissive use.
+  // THREE.Color for the 3D side of the scale.
+  //
+  // The colour space MUST be declared. The ramp stops are sRGB bytes — the same numbers
+  // gradientCSS() hands the browser — but THREE.Color's numeric constructor assigns straight
+  // into the working space, which ColorManagement makes linear-sRGB. Without the third argument
+  // an sRGB value is stored as though it were already linear, and the vessel then renders a
+  // different colour from the legend swatch that claims to describe it.
   function colorAt(wss) {
     const [r, g, b] = rgbAt(wss);
-    return new THREE.Color(r / 255, g / 255, b / 255);
+    return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
   }
 
   // CSS gradient string (left=low WSS, right=high) for legends/panels.

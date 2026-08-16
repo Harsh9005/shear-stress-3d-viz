@@ -211,7 +211,21 @@ function init() {
   // ── Render loop ──
   const clock = new THREE.Clock();
   let readyFrames = 0;
-  function renderFrame() { (bloom.enabled ? composer : renderer).render(scene, camera); }
+  // ALWAYS through the composer, even with bloom off.
+  //
+  // This used to be `(bloom.enabled ? composer : renderer).render(...)`, and that ternary was
+  // silently changing the data. The vessel, tissue and flow materials are raw ShaderMaterials
+  // that write gl_FragColor with no <tonemapping_fragment> / <colorspace_fragment> include, so
+  // renderer.render() sends their values to the framebuffer untouched while composer.render()
+  // sends them through OutputPass's tone map and colour-space encode. Two different colours for
+  // one WSS value — and the fps guard below flips between them at runtime, so frame rate decided
+  // what shade of shear a viewer saw. Measured at ΔE 19.9 median, ~36% of a decade of WSS
+  // (tools/color-probe.mjs, tasks/color-fidelity-report.md).
+  //
+  // Nothing is lost by always composing: EffectComposer skips any pass whose `enabled` is false,
+  // so `bloom.enabled = false` still buys back the bloom pass's cost for the fps guard — it just
+  // no longer changes the colour pipeline on its way past.
+  function renderFrame() { composer.render(); }
 
   // Initial synchronous paint so a frame exists even if rAF is throttled (e.g. background tab).
   renderFrame();
@@ -225,6 +239,11 @@ function init() {
     frame() { endIntro(); },
     scene, camera, renderer, controls, composer, bloom, scenarios, journey, flow, vessels, panels, tumors, simlab,
     anatomy, framedPos,
+    // colorscale + data are exposed so tools/color-probe.mjs can compare what a vessel actually
+    // renders as against what the legend says that WSS value should look like. They are the
+    // reference side of that comparison, so the probe must read them from here rather than
+    // re-deriving the ramp — a re-derivation could agree with a drifted render and prove nothing.
+    colorscale, data: DATA,
   };
 
   function animate() {
